@@ -123,6 +123,28 @@ const httpServer = createServer(async (req, res) => {
     return;
   }
 
+  // Standalone widget page - fetches live data and renders interactive widget
+  if (req.method === "GET" && url.pathname === "/widget") {
+    try {
+      const properties = await fetchProperties({
+        city: url.searchParams.get("city") || undefined,
+        minPrice: url.searchParams.get("minPrice") ? Number(url.searchParams.get("minPrice")) : undefined,
+        maxPrice: url.searchParams.get("maxPrice") ? Number(url.searchParams.get("maxPrice")) : undefined,
+        minBeds: url.searchParams.get("minBeds") ? Number(url.searchParams.get("minBeds")) : undefined,
+        type: url.searchParams.get("type") || undefined,
+        limit: url.searchParams.get("limit") ? Number(url.searchParams.get("limit")) : 20,
+      });
+      const dataScript = `<script>window.openai = { toolOutput: { properties: ${JSON.stringify(properties)} } };</script>`;
+      const fullHtml = propertyWidgetHtml.replace('<head>', `<head>\n${dataScript}`);
+      res.writeHead(200, { "Content-Type": "text/html", "Access-Control-Allow-Origin": "*" });
+      res.end(fullHtml);
+    } catch (err) {
+      res.writeHead(500, { "Content-Type": "text/html" });
+      res.end(`<h1>Error: ${err.message}</h1>`);
+    }
+    return;
+  }
+
   const MCP_METHODS = new Set(["POST", "GET", "DELETE"]);
   if (url.pathname === MCP_PATH && req.method && MCP_METHODS.has(req.method)) {
     res.setHeader("Access-Control-Allow-Origin", "*");
