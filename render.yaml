@@ -1,0 +1,9 @@
+services:
+  - type: web
+    runtime: node
+    name: property-explorer
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: PORT
+        value: 8787
