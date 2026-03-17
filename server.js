@@ -14,6 +14,9 @@ const PORT = Number(process.env.PORT ?? 8787);
 const RETS_BASE = "https://api.simplyrets.com";
 const RETS_AUTH = "Basic " + Buffer.from("simplyrets:simplyrets").toString("base64");
 
+// In-memory store for widget data (keyed by search ID)
+const searchResults = new Map();
+
 async function fetchProperties({ city, minPrice, maxPrice, minBeds, type, limit }) {
   const params = new URLSearchParams();
   if (city) params.set("q", city);
@@ -56,10 +59,10 @@ function formatPrice(price) {
   return "$" + price;
 }
 
-// Session store
+// Session store for MCP
 const sessions = new Map();
 
-function createPropertyServer() {
+function createPropertyServer(baseUrl) {
   const server = new McpServer({ name: "property-explorer", version: "1.0.0" });
 
   // Register widget resource
@@ -72,14 +75,12 @@ function createPropertyServer() {
         uri: "ui://widget/property.html",
         mimeType: "text/html+skybridge",
         text: widgetHtml,
-        _meta: {
-          "openai/widgetPrefersBorder": true,
-        },
+        _meta: { "openai/widgetPrefersBorder": true },
       }],
     })
   );
 
-  // Search properties tool - use registerTool to ensure _meta is passed
+  // Search properties tool
   server.registerTool(
     "search_properties",
     {
@@ -116,11 +117,24 @@ function createPropertyServer() {
           limit: args.limit,
         });
 
+        // Store results for the widget page
+        const searchId = randomUUID();
+        searchResults.set(searchId, properties);
+
+        // Clean old results (keep last 100)
+        if (searchResults.size > 100) {
+          const firstKey = searchResults.keys().next().value;
+          searchResults.delete(firstKey);
+        }
+
+        const widgetUrl = `${baseUrl}/widget/${searchId}`;
         const summary = `Found ${properties.length} properties${args.city ? ` in ${args.city}` : ""}. Prices range from ${formatPrice(Math.min(...properties.map((p) => p.price)))} to ${formatPrice(Math.max(...properties.map((p) => p.price)))}.`;
 
         return {
-          content: [],
-          structuredContent: { properties },
+          content: [
+            { type: "text", text: `${summary}\n\nView interactive explorer: ${widgetUrl}` },
+          ],
+          structuredContent: { properties, widgetUrl },
         };
       } catch (err) {
         return {
@@ -142,6 +156,7 @@ const CORS_HEADERS = {
 
 const httpServer = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
+  const baseUrl = `${req.headers["x-forwarded-proto"] || "http"}://${req.headers["x-forwarded-host"] || req.headers.host}`;
 
   // CORS preflight
   if (req.method === "OPTIONS") {
@@ -157,31 +172,74 @@ const httpServer = createServer(async (req, res) => {
     return;
   }
 
+  // Widget page - serves the interactive widget with embedded data
+  if (req.method === "GET" && url.pathname.startsWith("/widget/")) {
+    const searchId = url.pathname.split("/widget/")[1];
+    const properties = searchResults.get(searchId);
+
+    if (!properties) {
+      res.writeHead(404, { "Content-Type": "text/html" });
+      res.end("<h1>Search expired. Please search again.</h1>");
+      return;
+    }
+
+    // Inject data into widget HTML
+    const dataScript = `<script>window.__PROPERTY_DATA__ = ${JSON.stringify({ properties })};</script>`;
+    const fullHtml = widgetHtml.replace('<body>', `<body>\n${dataScript}`);
+
+    res.writeHead(200, {
+      "Content-Type": "text/html",
+      "Access-Control-Allow-Origin": "*",
+    });
+    res.end(fullHtml);
+    return;
+  }
+
+  // API endpoint - returns search results as JSON
+  if (req.method === "GET" && url.pathname === "/api/search") {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Content-Type", "application/json");
+    try {
+      const properties = await fetchProperties({
+        city: url.searchParams.get("city") || undefined,
+        minPrice: url.searchParams.get("minPrice") ? Number(url.searchParams.get("minPrice")) : undefined,
+        maxPrice: url.searchParams.get("maxPrice") ? Number(url.searchParams.get("maxPrice")) : undefined,
+        minBeds: url.searchParams.get("minBeds") ? Number(url.searchParams.get("minBeds")) : undefined,
+        type: url.searchParams.get("type") || undefined,
+        limit: url.searchParams.get("limit") ? Number(url.searchParams.get("limit")) : 20,
+      });
+      res.writeHead(200);
+      res.end(JSON.stringify({ properties }));
+    } catch (err) {
+      res.writeHead(500);
+      res.end(JSON.stringify({ error: err.message }));
+    }
+    return;
+  }
+
+  // MCP endpoint
   if (url.pathname !== MCP_PATH) {
     res.writeHead(404).end("Not Found");
     return;
   }
 
-  // Set CORS on all MCP responses
   Object.entries(CORS_HEADERS).forEach(([k, v]) => res.setHeader(k, v));
 
   const sessionId = req.headers["mcp-session-id"];
 
   if (req.method === "POST") {
-    // Check for existing session
     if (sessionId && sessions.has(sessionId)) {
       const transport = sessions.get(sessionId);
       try {
         await transport.handleRequest(req, res);
       } catch (error) {
-        console.error("Session request error:", error);
+        console.error("Session error:", error);
         if (!res.headersSent) res.writeHead(500).end("Internal server error");
       }
       return;
     }
 
-    // New session - create server + transport
-    const server = createPropertyServer();
+    const server = createPropertyServer(baseUrl);
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
       enableJsonResponse: true,
@@ -196,7 +254,6 @@ const httpServer = createServer(async (req, res) => {
     try {
       await server.connect(transport);
       await transport.handleRequest(req, res);
-      // Store session after successful initialization
       if (transport.sessionId) {
         sessions.set(transport.sessionId, transport);
       }
@@ -208,14 +265,11 @@ const httpServer = createServer(async (req, res) => {
   }
 
   if (req.method === "GET") {
-    // SSE stream for notifications
     if (sessionId && sessions.has(sessionId)) {
-      const transport = sessions.get(sessionId);
       try {
-        await transport.handleRequest(req, res);
+        await sessions.get(sessionId).handleRequest(req, res);
       } catch (error) {
-        console.error("SSE error:", error);
-        if (!res.headersSent) res.writeHead(500).end("Internal server error");
+        if (!res.headersSent) res.writeHead(500).end("Error");
       }
     } else {
       res.writeHead(400).end("No valid session");
@@ -225,12 +279,9 @@ const httpServer = createServer(async (req, res) => {
 
   if (req.method === "DELETE") {
     if (sessionId && sessions.has(sessionId)) {
-      const transport = sessions.get(sessionId);
       try {
-        await transport.handleRequest(req, res);
-      } catch (error) {
-        console.error("Delete error:", error);
-      }
+        await sessions.get(sessionId).handleRequest(req, res);
+      } catch (error) {}
       sessions.delete(sessionId);
     } else {
       res.writeHead(200).end();
