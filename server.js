@@ -119,17 +119,7 @@ function createPropertyServer() {
         const summary = `Found ${properties.length} properties${args.city ? ` in ${args.city}` : ""}. Prices range from ${formatPrice(Math.min(...properties.map((p) => p.price)))} to ${formatPrice(Math.max(...properties.map((p) => p.price)))}.`;
 
         return {
-          content: [
-            { type: "text", text: summary },
-            {
-              type: "resource",
-              resource: {
-                uri: "ui://widget/property.html",
-                mimeType: "text/html+skybridge",
-                text: widgetHtml,
-              },
-            },
-          ],
+          content: [],
           structuredContent: { properties },
         };
       } catch (err) {
