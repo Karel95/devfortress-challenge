@@ -4,7 +4,9 @@ import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
 import { z } from "zod";
 
-const propertyWidgetHtml = readFileSync("public/property-widget.html", "utf8");
+// Normalised to LF - the host string-injects its runtime into <head>, and its
+// own widgets are LF, so don't hand it CRLF from a Windows checkout
+const propertyWidgetHtml = readFileSync("public/property-widget.html", "utf8").replace(/\r\n/g, "\n");
 
 // SimplyRETS demo API
 const RETS_BASE = "https://api.simplyrets.com";
@@ -137,6 +139,12 @@ function createPropertyServer() {
         return {
           content: [{ type: "text", text: `Found ${properties.length} properties.` }],
           structuredContent: { properties },
+          // Athena pre-reads widget resources at connect time, so the result has
+          // to say which cached template this message renders with
+          _meta: {
+            "openai/outputTemplate": WIDGET_URI,
+            ui: { resourceUri: WIDGET_URI },
+          },
         };
       } catch (err) {
         return {
