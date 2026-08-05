@@ -18,6 +18,10 @@ const PHOTO_HOST = "https://d2bd5h5te3s67r.cloudfront.net";
 // The feed returns type codes; the widget filters on readable labels
 const TYPE_LABELS = { RES: "Residential", CND: "Condominium", RNT: "Rental" };
 
+// The SimplyRETS demo feed is 65 records across these six Texas cities only.
+// Anything else returns zero, so the model needs to know the real coverage.
+const CITIES = ["Houston", "Oak Ridge", "Cypress", "The Woodlands", "Katy", "Tomball"];
+
 // Single source of truth - referenced by the resource, the tool descriptor and
 // the tool result, which must agree for the host to render the widget
 const WIDGET_URI = "ui://widget/property.html";
@@ -107,9 +111,13 @@ function createPropertyServer() {
       title: "Search Properties",
       description:
         "Use this when the user asks about real estate listings, homes, condos or rentals - " +
-        "searches property listings by location, price range, bedrooms, and type.",
+        "searches property listings by location, price range, bedrooms, and type. " +
+        "This is a demo MLS feed covering only these cities: " + CITIES.join(", ") + ". " +
+        "If the user names any other city, say so and offer one of these instead.",
       inputSchema: {
-        city: z.string().optional().describe("City name (e.g., Houston)"),
+        city: z.string().optional().describe(
+          "City name. Only these have data: " + CITIES.join(", ")
+        ),
         minPrice: z.number().optional().describe("Min price USD"),
         maxPrice: z.number().optional().describe("Max price USD"),
         minBeds: z.number().optional().describe("Min bedrooms"),
@@ -136,8 +144,11 @@ function createPropertyServer() {
     async (args) => {
       try {
         const properties = await fetchProperties(args);
+        const summary = properties.length
+          ? `Found ${properties.length} properties.`
+          : `No listings matched. This demo feed only covers ${CITIES.join(", ")}.`;
         return {
-          content: [{ type: "text", text: `Found ${properties.length} properties.` }],
+          content: [{ type: "text", text: summary }],
           structuredContent: { properties },
           // Athena pre-reads widget resources at connect time, so the result has
           // to say which cached template this message renders with
