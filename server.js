@@ -59,6 +59,18 @@ async function fetchProperties(args) {
   });
 }
 
+// Ring buffer of recent MCP calls, surfaced at GET /log
+const callLog = [];
+function recordCall(httpMethod, body) {
+  callLog.push({
+    at: new Date().toISOString(),
+    http: httpMethod,
+    method: body?.method ?? null,
+    uri: body?.params?.uri ?? body?.params?.name ?? null,
+  });
+  if (callLog.length > 100) callLog.shift();
+}
+
 function createPropertyServer() {
   const server = new McpServer({ name: "property-explorer", version: "0.1.0" });
 
@@ -162,6 +174,14 @@ const httpServer = createServer(async (req, res) => {
     return;
   }
 
+  // Diagnostic: shows which MCP methods the host actually called, newest first.
+  // Answers "did Athena ever ask for the widget resource?"
+  if (req.method === "GET" && url.pathname === "/log") {
+    res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+    res.end(JSON.stringify({ calls: callLog.slice().reverse() }, null, 2));
+    return;
+  }
+
   // Standalone widget page - fetches live data and renders interactive widget
   if (req.method === "GET" && url.pathname === "/widget") {
     try {
@@ -188,12 +208,24 @@ const httpServer = createServer(async (req, res) => {
   if (url.pathname === MCP_PATH && req.method && MCP_METHODS.has(req.method)) {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Expose-Headers", "Mcp-Session-Id");
+
+    // Read the body ourselves so we can record which JSON-RPC method the host
+    // asked for, then hand the parsed body to the transport
+    let parsedBody;
+    if (req.method === "POST") {
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      const raw = Buffer.concat(chunks).toString("utf8");
+      try { parsedBody = JSON.parse(raw); } catch { /* leave undefined */ }
+    }
+    recordCall(req.method, parsedBody);
+
     const server = createPropertyServer();
     const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     res.on("close", () => { transport.close(); server.close(); });
     try {
       await server.connect(transport);
-      await transport.handleRequest(req, res);
+      await transport.handleRequest(req, res, parsedBody);
     } catch (error) {
       console.error("Error handling MCP request:", error);
       if (!res.headersSent) res.writeHead(500).end("Internal server error");
