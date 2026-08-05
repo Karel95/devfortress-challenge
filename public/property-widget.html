@@ -80,18 +80,45 @@
     <div class="modal" id="modal"></div>
   </div>
 
-  <script type="module">
-    let allProperties = [...(window.openai?.toolOutput?.properties ?? [])];
-    let filtered = [...allProperties];
+  <!-- Plain script, matching Athena's own working widgets - no module semantics -->
+  <script>
+    let allProperties = [];
+    let filtered = [];
     let view = 'list';
+    let resolved = false;
 
-    const handleSetGlobals = (event) => {
-      const globals = event.detail?.globals;
-      if (!globals?.toolOutput?.properties) return;
-      allProperties = globals.toolOutput.properties;
+    // The host may hand data over as the raw structuredContent or still wrapped
+    // in the tool result, and may deliver it before or after this script runs.
+    function normalize(raw) {
+      if (!raw) return null;
+      if (typeof raw === 'string') {
+        try { return normalize(JSON.parse(raw)); } catch { return null; }
+      }
+      if (raw.structuredContent) return normalize(raw.structuredContent);
+      if (raw.result?.structuredContent) return normalize(raw.result.structuredContent);
+      return Array.isArray(raw.properties) ? raw : null;
+    }
+
+    function snapshot() {
+      const o = window.openai;
+      if (!o) return null;
+      return normalize(o.toolOutput) || normalize(o.globals?.toolOutput);
+    }
+
+    // Not gated on `resolved` - a follow-up search must be able to replace the data
+    function adopt(data) {
+      if (!data) return;
+      resolved = true;
+      allProperties = data.properties;
       applyFilters();
-    };
-    window.addEventListener("openai:set_globals", handleSetGlobals, { passive: true });
+    }
+
+    // Late delivery: the host fires several event shapes depending on version
+    ['openai:set_globals', 'openai:update', 'openai:toolOutputChange', 'openai:set_tool_output']
+      .forEach((evt) => window.addEventListener(evt, (e) => {
+        const d = e.detail;
+        adopt(normalize(d?.toolOutput) || normalize(d?.globals?.toolOutput) || normalize(d));
+      }, { passive: true }));
 
     function fmt(p) {
       if (p >= 1e6) return '$' + (p/1e6).toFixed(1) + 'M';
@@ -170,7 +197,7 @@
       document.getElementById('info').textContent = `${filtered.length} of ${allProperties.length} properties`;
 
       if (!filtered.length) {
-        el.innerHTML = '<div class="no-results">No properties match filters.</div>';
+        el.innerHTML = `<div class="no-results">${resolved ? 'No properties match filters.' : 'Loading properties…'}</div>`;
         return;
       }
 
@@ -212,6 +239,19 @@
       if (e.target === modalBg || e.target.dataset.close) closeModal();
     });
 
+    // Poll as a fallback - the host sometimes populates window.openai after the
+    // document has already executed, and fires no event we caught above
+    function bootstrap() {
+      adopt(snapshot());
+      let tries = 0;
+      const timer = setInterval(() => {
+        if (resolved || tries++ > 60) { clearInterval(timer); return; }
+        adopt(snapshot());
+      }, 250);
+    }
+
+    window.addEventListener('skybridge:ready', bootstrap);
+    bootstrap();
     render();
   </script>
 </body>
