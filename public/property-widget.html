@@ -5,79 +5,284 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Property Explorer</title>
   <style>
-    :root { color: #0b0b0f; font-family: "Inter", system-ui, -apple-system, sans-serif; }
-    html, body { width: 100%; min-height: 100%; box-sizing: border-box; }
-    body { margin: 0; padding: 16px; background: #f6f8fb; }
-    main { width: 100%; max-width: 800px; margin: 0 auto; background: #fff; border-radius: 16px; padding: 20px; box-shadow: 0 12px 24px rgba(15,23,42,0.08); }
-    h2 { margin: 0 0 12px; font-size: 1.25rem; }
+    /* Property ledger: near-monochrome, monospaced data, colour only where it
+       carries meaning (listing status, price position). */
+    :root {
+      --paper:   #F4F5F6;
+      --surface: #FFFFFF;
+      --ink:     #10151C;
+      --muted:   #6E7681;
+      --line:    #E1E4E8;
+      --track:   #D7DBE0;
+      --sale:    #17604A;
+      --sale-bg: #E4EFEA;
+      --rent:    #2A4E8F;
+      --rent-bg: #E5EBF5;
+      --focus:   #10151C;
 
-    .controls { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
-    .controls select, .controls input { padding: 8px 10px; border: 1px solid #cad3e0; border-radius: 10px; font-size: 0.9rem; }
-    .controls button { border: none; border-radius: 10px; background: #111bf5; color: white; font-weight: 600; padding: 8px 16px; cursor: pointer; }
-    .controls button.secondary { background: #f2f4fb; color: #0b0b0f; border: 1px solid #cad3e0; }
-    .controls button.secondary.active { background: #111bf5; color: white; border-color: #111bf5; }
+      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    :root[data-theme="dark"] {
+      --paper:   #0E1319;
+      --surface: #161C24;
+      --ink:     #E8EBEF;
+      --muted:   #8B95A1;
+      --line:    #232B35;
+      --track:   #2C3541;
+      --sale:    #6FD3AF;
+      --sale-bg: #16302A;
+      --rent:    #8FB4E8;
+      --rent-bg: #1A2537;
+      --focus:   #E8EBEF;
+    }
 
-    .info { font-size: 0.85rem; color: #6c768a; margin-bottom: 8px; }
+    * { box-sizing: border-box; }
+    html, body { width: 100%; min-height: 100%; }
+    body {
+      margin: 0;
+      padding: 14px 16px 18px;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 14px;
+      -webkit-font-smoothing: antialiased;
+    }
 
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
-    .list .card { display: flex; flex-direction: row; }
-    .list .card-img { width: 180px; min-width: 180px; height: 110px; }
+    /* ---- toolbar ---------------------------------------------------- */
+    .bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--line);
+    }
+    .bar select, .bar input {
+      font-family: var(--sans);
+      font-size: 12px;
+      color: var(--ink);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 6px 8px;
+      min-width: 0;
+    }
+    .bar input { width: 68px; font-family: var(--mono); }
+    .bar input::placeholder { color: var(--muted); }
+    .bar select:focus-visible, .bar input:focus-visible,
+    button:focus-visible, .card:focus-visible {
+      outline: 2px solid var(--focus);
+      outline-offset: 2px;
+    }
 
-    .card { background: #f2f4fb; border-radius: 12px; overflow: hidden; cursor: pointer; transition: box-shadow 0.2s, transform 0.15s; }
-    .card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.1); transform: translateY(-2px); }
-    .card-img { height: 140px; background: linear-gradient(135deg, #667eea, #764ba2); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 28px; position: relative; }
-    .card-img img { width: 100%; height: 100%; object-fit: cover; }
-    .card-body { padding: 12px; flex: 1; }
-    .card-price { font-size: 1.15rem; font-weight: 700; margin-bottom: 2px; }
-    .card-addr { font-size: 0.8rem; color: #6c768a; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .card-features { display: flex; gap: 10px; font-size: 0.75rem; color: #4b5563; }
-    .badge { position: absolute; top: 6px; left: 6px; padding: 2px 8px; border-radius: 10px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; }
-    .badge-sale { background: #dcfce7; color: #166534; }
-    .badge-rent { background: #dbeafe; color: #1e40af; }
+    button {
+      font-family: var(--sans);
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--ink);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 6px 12px;
+      cursor: pointer;
+    }
+    button:hover { border-color: var(--muted); }
+    #filterBtn { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+    #filterBtn:hover { opacity: .88; }
 
-    .modal-bg { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; padding: 20px; }
-    .modal-bg.open { display: flex; }
-    .modal { background: #fff; border-radius: 16px; max-width: 520px; width: 100%; max-height: 80vh; overflow-y: auto; padding: 24px; position: relative; }
-    .modal-close { position: absolute; top: 10px; right: 14px; background: none; border: none; font-size: 20px; cursor: pointer; color: #6c768a; }
-    .modal h3 { margin: 0 0 4px; font-size: 1.1rem; }
-    .modal .price { font-size: 1.3rem; font-weight: 700; color: #111bf5; margin: 6px 0; }
-    .modal .addr { color: #6c768a; font-size: 0.85rem; margin-bottom: 12px; }
-    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
-    .detail-item { background: #f6f8fb; padding: 10px; border-radius: 10px; }
-    .detail-item small { font-size: 0.65rem; text-transform: uppercase; color: #9ca3af; display: block; margin-bottom: 2px; }
-    .detail-item strong { font-size: 0.95rem; }
-    .no-results { text-align: center; padding: 40px; color: #9ca3af; }
+    .seg { display: inline-flex; margin-left: auto; }
+    .seg button { border-radius: 0; margin-left: -1px; }
+    .seg button:first-child { border-radius: 7px 0 0 7px; margin-left: 0; }
+    .seg button:last-child  { border-radius: 0 7px 7px 0; }
+    .seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+    /* ---- summary line ----------------------------------------------- */
+    .summary {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      color: var(--muted);
+      padding: 9px 2px 11px;
+    }
+
+    /* ---- list ------------------------------------------------------- */
+    .list { display: flex; flex-direction: column; gap: 8px; }
+    .list .card {
+      display: grid;
+      grid-template-columns: 104px 1fr auto;
+      grid-template-rows: auto auto;
+      gap: 2px 14px;
+      align-items: center;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px;
+      cursor: pointer;
+    }
+    .list .thumb { grid-row: 1 / span 2; height: 72px; }
+    .list .scale { grid-column: 2 / span 2; }
+
+    /* ---- grid ------------------------------------------------------- */
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 10px; }
+    .grid .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+      cursor: pointer;
+    }
+    .grid .thumb { width: 100%; height: 116px; border-radius: 0; }
+    .grid .body { padding: 9px 11px 11px; }
+    .grid .scale { display: none; }
+    .grid .metrics { margin-top: 5px; }
+
+    .card:hover { border-color: var(--muted); }
+
+    .thumb {
+      position: relative;
+      border-radius: 7px;
+      overflow: hidden;
+      background: var(--track);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+    }
+    .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+    .badge {
+      position: absolute;
+      top: 6px; left: 6px;
+      font-family: var(--mono);
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .badge.sale { background: var(--sale-bg); color: var(--sale); }
+    .badge.rent { background: var(--rent-bg); color: var(--rent); }
+
+    .price {
+      font-family: var(--mono);
+      font-size: 19px;
+      font-weight: 600;
+      letter-spacing: -.02em;
+      line-height: 1.15;
+    }
+    .addr {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.35;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .metrics {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--muted);
+      white-space: nowrap;
+      letter-spacing: .02em;
+    }
+    .list .metrics { text-align: right; }
+
+    /* Signature: where this listing sits in the result set's price range */
+    .scale { margin-top: 7px; height: 3px; background: var(--track); border-radius: 2px; position: relative; }
+    .scale i { position: absolute; top: -2px; width: 7px; height: 7px; border-radius: 50%; background: var(--ink); transform: translateX(-50%); }
+
+    .empty {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+      text-align: center;
+      padding: 44px 0;
+      letter-spacing: .03em;
+    }
+
+    /* ---- detail ----------------------------------------------------- */
+    .sheet-bg {
+      position: fixed; inset: 0;
+      background: rgba(6,10,15,.55);
+      display: none; align-items: center; justify-content: center;
+      padding: 18px; z-index: 50;
+    }
+    .sheet-bg.open { display: flex; }
+    .sheet {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      width: 100%; max-width: 440px;
+      max-height: 100%; overflow-y: auto;
+      padding: 18px;
+      position: relative;
+    }
+    .sheet h3 { margin: 10px 0 2px; font-size: 15px; font-weight: 600; }
+    .sheet .price { font-size: 24px; margin: 8px 0 2px; }
+    .sheet .addr { white-space: normal; margin-bottom: 14px; }
+    .close {
+      position: absolute; top: 12px; right: 12px;
+      width: 26px; height: 26px; padding: 0;
+      border-radius: 6px; font-size: 15px; line-height: 1;
+      color: var(--muted);
+    }
+    .specs { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+    .spec { background: var(--surface); padding: 9px 11px; }
+    .spec dt { font-family: var(--mono); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 3px; }
+    .spec dd { font-family: var(--mono); font-size: 13px; margin: 0; }
+    .notes { font-size: 12px; line-height: 1.55; color: var(--muted); margin: 13px 0 0; }
+    .mls { font-family: var(--mono); font-size: 10px; color: var(--muted); margin: 11px 0 0; letter-spacing: .04em; }
+
+    @media (prefers-reduced-motion: no-preference) {
+      .card, button, .bar select, .bar input { transition: border-color .14s ease, background .14s ease, opacity .14s ease; }
+    }
+    @media (max-width: 460px) {
+      .list .card { grid-template-columns: 76px 1fr; }
+      .list .metrics { grid-column: 2; text-align: left; }
+      .list .scale { grid-column: 1 / span 2; }
+      .seg { margin-left: 0; }
+    }
   </style>
 </head>
 <body>
-  <main>
-    <h2>Property Explorer</h2>
-    <div class="controls">
-      <select id="sortBy" title="Sort by">
-        <option value="price-asc">Price: Low to High</option>
-        <option value="price-desc">Price: High to Low</option>
-        <option value="beds-desc">Most Bedrooms</option>
-        <option value="sqft-desc">Largest Area</option>
-      </select>
-      <select id="filterType" title="Filter by type">
-        <option value="all">All Types</option>
-        <option value="Residential">Residential</option>
-        <option value="Condominium">Condo</option>
-        <option value="Rental">Rental</option>
-      </select>
-      <input type="number" id="minPrice" placeholder="Min $" style="width:80px" />
-      <input type="number" id="maxPrice" placeholder="Max $" style="width:80px" />
-      <input type="number" id="minBeds" placeholder="Beds+" style="width:60px" />
-      <button type="button" id="filterBtn">Filter</button>
-      <button type="button" class="secondary" id="gridBtn">Grid</button>
-      <button type="button" class="secondary active" id="listBtn">List</button>
-    </div>
-    <div class="info" id="info"></div>
-    <div id="container" class="list"></div>
-  </main>
+  <div class="bar">
+    <select id="sortBy" title="Sort listings">
+      <option value="price-asc">Price ↑</option>
+      <option value="price-desc">Price ↓</option>
+      <option value="beds-desc">Most beds</option>
+      <option value="sqft-desc">Largest</option>
+    </select>
+    <select id="filterType" title="Filter by property type">
+      <option value="all">All types</option>
+      <option value="Residential">Residential</option>
+      <option value="Condominium">Condominium</option>
+      <option value="Rental">Rental</option>
+    </select>
+    <input type="number" id="minPrice" placeholder="Min $" aria-label="Minimum price" />
+    <input type="number" id="maxPrice" placeholder="Max $" aria-label="Maximum price" />
+    <input type="number" id="minBeds" placeholder="Beds" aria-label="Minimum bedrooms" />
+    <button type="button" id="filterBtn">Apply</button>
+    <span class="seg">
+      <button type="button" id="listBtn" aria-pressed="true">List</button>
+      <button type="button" id="gridBtn" aria-pressed="false">Grid</button>
+    </span>
+  </div>
 
-  <div class="modal-bg" id="modalBg">
-    <div class="modal" id="modal"></div>
+  <div class="summary">
+    <span id="count"></span>
+    <span id="range"></span>
+  </div>
+
+  <div id="container" class="list"></div>
+
+  <div class="sheet-bg" id="sheetBg">
+    <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Property detail"></div>
   </div>
 
   <!-- Plain script, matching Athena's own working widgets - no module semantics -->
@@ -120,17 +325,32 @@
         adopt(normalize(d?.toolOutput) || normalize(d?.globals?.toolOutput) || normalize(d));
       }, { passive: true }));
 
-    function fmt(p) {
-      if (p >= 1e6) return '$' + (p/1e6).toFixed(1) + 'M';
-      if (p >= 1e3) return '$' + (p/1e3).toFixed(0) + 'K';
-      return '$' + p;
+    function applyTheme() {
+      const t = window.openai?.theme;
+      const dark = t ? t === 'dark'
+        : window.matchMedia?.('(prefers-color-scheme: dark)').matches;
+      document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+    }
+
+    function money(n) {
+      if (!n) return '—';
+      if (n >= 1e6) return '$' + (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+      if (n >= 1e3) return '$' + Math.round(n / 1e3) + 'K';
+      return '$' + n;
+    }
+
+    function esc(s) {
+      if (!s) return '';
+      const d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
     }
 
     function setView(v) {
       view = v;
       document.getElementById('container').className = v;
-      document.getElementById('gridBtn').classList.toggle('active', v === 'grid');
-      document.getElementById('listBtn').classList.toggle('active', v === 'list');
+      document.getElementById('listBtn').setAttribute('aria-pressed', String(v === 'list'));
+      document.getElementById('gridBtn').setAttribute('aria-pressed', String(v === 'grid'));
     }
 
     function applyFilters() {
@@ -140,7 +360,7 @@
       const maxP = parseInt(document.getElementById('maxPrice').value) || Infinity;
       const minB = parseInt(document.getElementById('minBeds').value) || 0;
 
-      filtered = allProperties.filter(p => {
+      filtered = allProperties.filter((p) => {
         if (type !== 'all' && p.type !== type) return false;
         if (p.price < minP || p.price > maxP) return false;
         if (p.bedrooms < minB) return false;
@@ -151,101 +371,137 @@
         if (sort === 'price-asc') return a.price - b.price;
         if (sort === 'price-desc') return b.price - a.price;
         if (sort === 'beds-desc') return b.bedrooms - a.bedrooms;
-        if (sort === 'sqft-desc') return (b.sqft||0) - (a.sqft||0);
+        if (sort === 'sqft-desc') return (b.sqft || 0) - (a.sqft || 0);
         return 0;
       });
 
       render();
     }
 
-    function showDetail(i) {
-      const p = filtered[i];
-      if (!p) return;
-      document.getElementById('modal').innerHTML = `
-        <button type="button" class="modal-close" data-close="1">&times;</button>
-        <span class="badge ${p.listingType==='Rent'?'badge-rent':'badge-sale'}">${p.listingType==='Rent'?'Rent':'Sale'}</span>
-        <h3>${esc(p.address)}</h3>
-        <div class="price">${fmt(p.price)}</div>
-        <div class="addr">${esc(p.city)}, ${esc(p.state)} ${esc(p.zip)}</div>
-        <div class="detail-grid">
-          <div class="detail-item"><small>Bedrooms</small><strong>${p.bedrooms||'-'}</strong></div>
-          <div class="detail-item"><small>Bathrooms</small><strong>${p.bathrooms||'-'}</strong></div>
-          <div class="detail-item"><small>Sq Ft</small><strong>${p.sqft?p.sqft.toLocaleString():'-'}</strong></div>
-          <div class="detail-item"><small>Type</small><strong>${esc(p.type||'-')}</strong></div>
-          <div class="detail-item"><small>Year Built</small><strong>${p.yearBuilt||'-'}</strong></div>
-          <div class="detail-item"><small>Lot Size</small><strong>${p.lotSize?p.lotSize.toLocaleString()+' sqft':'-'}</strong></div>
-        </div>
-        ${p.description?`<p style="font-size:0.85rem;color:#4b5563;line-height:1.5">${esc(p.description.substring(0,300))}...</p>`:''}
-        ${p.mlsId?`<p style="font-size:0.7rem;color:#9ca3af">MLS# ${p.mlsId}</p>`:''}
-      `;
-      document.getElementById('modalBg').classList.add('open');
-    }
-
-    function closeModal() {
-      document.getElementById('modalBg').classList.remove('open');
-    }
-
-    function esc(s) {
-      if (!s) return '';
-      const d = document.createElement('div');
-      d.textContent = s;
-      return d.innerHTML;
+    function metricsOf(p) {
+      return [
+        (p.bedrooms || '—') + ' bd',
+        (p.bathrooms || '—') + ' ba',
+        p.sqft ? p.sqft.toLocaleString() + ' sf' : '— sf',
+      ].join('  ·  ');
     }
 
     function render() {
       const el = document.getElementById('container');
-      document.getElementById('info').textContent = `${filtered.length} of ${allProperties.length} properties`;
+      const countEl = document.getElementById('count');
+      const rangeEl = document.getElementById('range');
 
       if (!filtered.length) {
-        el.innerHTML = `<div class="no-results">${resolved ? 'No properties match filters.' : 'Loading properties…'}</div>`;
+        countEl.textContent = resolved ? 'No matches' : '';
+        rangeEl.textContent = '';
+        el.className = view;
+        el.innerHTML = '<div class="empty">' +
+          (resolved ? 'No listings match these filters' : 'Loading listings…') + '</div>';
         return;
       }
 
-      el.innerHTML = filtered.map((p, i) => `
-        <div class="card" data-index="${i}">
-          <div class="card-img">
-            ${p.photo ? `<img src="${esc(p.photo)}" alt="${esc(p.address)}" />` : '🏠'}
-            <span class="badge ${p.listingType==='Rent'?'badge-rent':'badge-sale'}">${p.listingType==='Rent'?'Rent':'Sale'}</span>
-          </div>
-          <div class="card-body">
-            <div class="card-price">${fmt(p.price)}</div>
-            <div class="card-addr">${esc(p.address)}</div>
-            <div class="card-features">
-              <span>🛏 ${p.bedrooms||'-'} bd</span>
-              <span>🚿 ${p.bathrooms||'-'} ba</span>
-              <span>📐 ${p.sqft?p.sqft.toLocaleString()+' sqft':'-'}</span>
-            </div>
-          </div>
-        </div>
-      `).join('');
+      const prices = filtered.map((p) => p.price).filter(Boolean);
+      const lo = Math.min(...prices);
+      const hi = Math.max(...prices);
+      const spread = hi - lo;
+
+      countEl.textContent = filtered.length === allProperties.length
+        ? filtered.length + ' listings'
+        : filtered.length + ' of ' + allProperties.length + ' listings';
+      rangeEl.textContent = spread ? money(lo) + ' – ' + money(hi) : money(lo);
+
+      el.className = view;
+      el.innerHTML = filtered.map((p, i) => {
+        const rent = p.listingType === 'Rent';
+        const pos = spread ? ((p.price - lo) / spread) * 100 : 50;
+        const thumb =
+          '<div class="thumb">' +
+            (p.photo ? '<img src="' + esc(p.photo) + '" alt="" loading="lazy" />' : '🏠') +
+            '<span class="badge ' + (rent ? 'rent' : 'sale') + '">' + (rent ? 'Rent' : 'Sale') + '</span>' +
+          '</div>';
+        const price = '<div class="price">' + money(p.price) + '</div>';
+        const addr = '<div class="addr">' + esc(p.address) + '</div>';
+        const mets = '<div class="metrics">' + metricsOf(p) + '</div>';
+        const scale = spread
+          ? '<div class="scale"><i style="left:' + pos.toFixed(1) + '%"></i></div>'
+          : '';
+
+        return view === 'grid'
+          ? '<article class="card" data-index="' + i + '" tabindex="0">' + thumb +
+              '<div class="body">' + price + addr + mets + '</div></article>'
+          : '<article class="card" data-index="' + i + '" tabindex="0">' + thumb +
+              '<div>' + price + addr + '</div>' + mets + scale + '</article>';
+      }).join('');
+    }
+
+    function showDetail(i) {
+      const p = filtered[i];
+      if (!p) return;
+      const rent = p.listingType === 'Rent';
+      const spec = (label, value) =>
+        '<div class="spec"><dt>' + label + '</dt><dd>' + value + '</dd></div>';
+
+      document.getElementById('sheet').innerHTML =
+        '<button type="button" class="close" data-close="1" aria-label="Close">✕</button>' +
+        '<span class="badge ' + (rent ? 'rent' : 'sale') + '" style="position:static;display:inline-block">' +
+          (rent ? 'For rent' : 'For sale') + '</span>' +
+        '<div class="price">' + money(p.price) + '</div>' +
+        '<h3>' + esc(p.address) + '</h3>' +
+        '<div class="addr">' + esc(p.city) + ', ' + esc(p.state) + ' ' + esc(p.zip) + '</div>' +
+        '<dl class="specs">' +
+          spec('Bedrooms', p.bedrooms || '—') +
+          spec('Bathrooms', p.bathrooms || '—') +
+          spec('Interior', p.sqft ? p.sqft.toLocaleString() + ' sf' : '—') +
+          spec('Type', esc(p.type || '—')) +
+          spec('Year built', p.yearBuilt || '—') +
+          spec('Lot', p.lotSize ? esc(String(p.lotSize)) : '—') +
+        '</dl>' +
+        (p.description ? '<p class="notes">' + esc(p.description) + '</p>' : '') +
+        (p.mlsId ? '<p class="mls">MLS ' + esc(String(p.mlsId)) + '</p>' : '');
+
+      document.getElementById('sheetBg').classList.add('open');
+    }
+
+    function closeSheet() {
+      document.getElementById('sheetBg').classList.remove('open');
     }
 
     document.getElementById('filterBtn').addEventListener('click', applyFilters);
-    document.getElementById('gridBtn').addEventListener('click', () => setView('grid'));
-    document.getElementById('listBtn').addEventListener('click', () => setView('list'));
+    document.getElementById('sortBy').addEventListener('change', applyFilters);
+    document.getElementById('filterType').addEventListener('change', applyFilters);
+    document.getElementById('listBtn').addEventListener('click', () => { setView('list'); render(); });
+    document.getElementById('gridBtn').addEventListener('click', () => { setView('grid'); render(); });
 
     const container = document.getElementById('container');
     container.addEventListener('click', (e) => {
       const card = e.target.closest('.card');
       if (card) showDetail(Number(card.dataset.index));
     });
+    container.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const card = e.target.closest('.card');
+      if (card) { e.preventDefault(); showDetail(Number(card.dataset.index)); }
+    });
     // 'error' does not bubble, so listen during capture to swap in a placeholder
     container.addEventListener('error', (e) => {
       if (e.target.tagName === 'IMG') e.target.replaceWith(document.createTextNode('🏠'));
     }, true);
 
-    const modalBg = document.getElementById('modalBg');
-    modalBg.addEventListener('click', (e) => {
-      if (e.target === modalBg || e.target.dataset.close) closeModal();
+    const sheetBg = document.getElementById('sheetBg');
+    sheetBg.addEventListener('click', (e) => {
+      if (e.target === sheetBg || e.target.dataset.close) closeSheet();
     });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet(); });
 
     // Poll as a fallback - the host sometimes populates window.openai after the
     // document has already executed, and fires no event we caught above
     function bootstrap() {
+      applyTheme();
       adopt(snapshot());
       let tries = 0;
       const timer = setInterval(() => {
         if (resolved || tries++ > 60) { clearInterval(timer); return; }
+        applyTheme();
         adopt(snapshot());
       }, 250);
     }
