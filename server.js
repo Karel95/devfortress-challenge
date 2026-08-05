@@ -73,6 +73,8 @@ function createPropertyServer() {
         text: propertyWidgetHtml,
         _meta: {
           "openai/widgetPrefersBorder": true,
+          // Newer Apps SDK contract - hosts that have migrated read this instead
+          ui: { prefersBorder: true },
           "openai/widgetDescription":
             "Browse property listings as cards with sorting, filtering and a detail view.",
           // Listing photos are blocked by the widget sandbox unless declared here
@@ -110,6 +112,9 @@ function createPropertyServer() {
       },
       _meta: {
         "openai/outputTemplate": WIDGET_URI,
+        // Newer Apps SDK names this ui.resourceUri and treats outputTemplate as
+        // a compatibility alias; advertise both so either host contract matches
+        ui: { resourceUri: WIDGET_URI },
         "openai/toolInvocation/invoking": "Searching properties",
         "openai/toolInvocation/invoked": "Found properties",
       },
