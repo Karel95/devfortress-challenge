@@ -16,6 +16,10 @@ const PHOTO_HOST = "https://d2bd5h5te3s67r.cloudfront.net";
 // The feed returns type codes; the widget filters on readable labels
 const TYPE_LABELS = { RES: "Residential", CND: "Condominium", RNT: "Rental" };
 
+// Single source of truth - referenced by the resource, the tool descriptor and
+// the tool result, which must agree for the host to render the widget
+const WIDGET_URI = "ui://widget/property.html";
+
 async function fetchProperties(args) {
   const params = new URLSearchParams();
   if (args.city) params.set("q", args.city);
@@ -60,11 +64,11 @@ function createPropertyServer() {
 
   server.registerResource(
     "property-widget",
-    "ui://widget/property.html",
+    WIDGET_URI,
     { mimeType: "text/html+skybridge" },
     async () => ({
       contents: [{
-        uri: "ui://widget/property.html",
+        uri: WIDGET_URI,
         mimeType: "text/html+skybridge",
         text: propertyWidgetHtml,
         _meta: {
@@ -105,7 +109,7 @@ function createPropertyServer() {
         openWorldHint: true,
       },
       _meta: {
-        "openai/outputTemplate": "ui://widget/property.html",
+        "openai/outputTemplate": WIDGET_URI,
         "openai/toolInvocation/invoking": "Searching properties",
         "openai/toolInvocation/invoked": "Found properties",
       },
