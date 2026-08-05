@@ -63,19 +63,20 @@
         <option value="all">All Types</option>
         <option value="Residential">Residential</option>
         <option value="Condominium">Condo</option>
+        <option value="Rental">Rental</option>
       </select>
       <input type="number" id="minPrice" placeholder="Min $" style="width:80px" />
       <input type="number" id="maxPrice" placeholder="Max $" style="width:80px" />
       <input type="number" id="minBeds" placeholder="Beds+" style="width:60px" />
-      <button onclick="applyFilters()">Filter</button>
-      <button class="secondary" id="gridBtn" onclick="setView('grid')">Grid</button>
-      <button class="secondary active" id="listBtn" onclick="setView('list')">List</button>
+      <button type="button" id="filterBtn">Filter</button>
+      <button type="button" class="secondary" id="gridBtn">Grid</button>
+      <button type="button" class="secondary active" id="listBtn">List</button>
     </div>
     <div class="info" id="info"></div>
     <div id="container" class="list"></div>
   </main>
 
-  <div class="modal-bg" id="modalBg" onclick="if(event.target===this)closeModal()">
+  <div class="modal-bg" id="modalBg">
     <div class="modal" id="modal"></div>
   </div>
 
@@ -98,14 +99,14 @@
       return '$' + p;
     }
 
-    window.setView = function(v) {
+    function setView(v) {
       view = v;
       document.getElementById('container').className = v;
       document.getElementById('gridBtn').classList.toggle('active', v === 'grid');
       document.getElementById('listBtn').classList.toggle('active', v === 'list');
-    };
+    }
 
-    window.applyFilters = function() {
+    function applyFilters() {
       const sort = document.getElementById('sortBy').value;
       const type = document.getElementById('filterType').value;
       const minP = parseInt(document.getElementById('minPrice').value) || 0;
@@ -128,14 +129,14 @@
       });
 
       render();
-    };
+    }
 
-    window.showDetail = function(i) {
+    function showDetail(i) {
       const p = filtered[i];
       if (!p) return;
       document.getElementById('modal').innerHTML = `
-        <button class="modal-close" onclick="closeModal()">&times;</button>
-        <span class="badge ${p.listingType==='Lease'?'badge-rent':'badge-sale'}">${p.listingType==='Lease'?'Rent':'Sale'}</span>
+        <button type="button" class="modal-close" data-close="1">&times;</button>
+        <span class="badge ${p.listingType==='Rent'?'badge-rent':'badge-sale'}">${p.listingType==='Rent'?'Rent':'Sale'}</span>
         <h3>${esc(p.address)}</h3>
         <div class="price">${fmt(p.price)}</div>
         <div class="addr">${esc(p.city)}, ${esc(p.state)} ${esc(p.zip)}</div>
@@ -151,11 +152,11 @@
         ${p.mlsId?`<p style="font-size:0.7rem;color:#9ca3af">MLS# ${p.mlsId}</p>`:''}
       `;
       document.getElementById('modalBg').classList.add('open');
-    };
+    }
 
-    window.closeModal = function() {
+    function closeModal() {
       document.getElementById('modalBg').classList.remove('open');
-    };
+    }
 
     function esc(s) {
       if (!s) return '';
@@ -174,10 +175,10 @@
       }
 
       el.innerHTML = filtered.map((p, i) => `
-        <div class="card" onclick="showDetail(${i})">
+        <div class="card" data-index="${i}">
           <div class="card-img">
-            ${p.photo ? `<img src="${esc(p.photo)}" alt="${esc(p.address)}" onerror="this.parentElement.innerHTML='🏠'" />` : '🏠'}
-            <span class="badge ${p.listingType==='Lease'?'badge-rent':'badge-sale'}">${p.listingType==='Lease'?'Rent':'Sale'}</span>
+            ${p.photo ? `<img src="${esc(p.photo)}" alt="${esc(p.address)}" />` : '🏠'}
+            <span class="badge ${p.listingType==='Rent'?'badge-rent':'badge-sale'}">${p.listingType==='Rent'?'Rent':'Sale'}</span>
           </div>
           <div class="card-body">
             <div class="card-price">${fmt(p.price)}</div>
@@ -191,6 +192,25 @@
         </div>
       `).join('');
     }
+
+    document.getElementById('filterBtn').addEventListener('click', applyFilters);
+    document.getElementById('gridBtn').addEventListener('click', () => setView('grid'));
+    document.getElementById('listBtn').addEventListener('click', () => setView('list'));
+
+    const container = document.getElementById('container');
+    container.addEventListener('click', (e) => {
+      const card = e.target.closest('.card');
+      if (card) showDetail(Number(card.dataset.index));
+    });
+    // 'error' does not bubble, so listen during capture to swap in a placeholder
+    container.addEventListener('error', (e) => {
+      if (e.target.tagName === 'IMG') e.target.replaceWith(document.createTextNode('🏠'));
+    }, true);
+
+    const modalBg = document.getElementById('modalBg');
+    modalBg.addEventListener('click', (e) => {
+      if (e.target === modalBg || e.target.dataset.close) closeModal();
+    });
 
     render();
   </script>

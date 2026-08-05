@@ -10,6 +10,12 @@ const propertyWidgetHtml = readFileSync("public/property-widget.html", "utf8");
 const RETS_BASE = "https://api.simplyrets.com";
 const RETS_AUTH = "Basic " + Buffer.from("simplyrets:simplyrets").toString("base64");
 
+// Host serving listing photos - must stay in sync with widgetCSP resource_domains
+const PHOTO_HOST = "https://d2bd5h5te3s67r.cloudfront.net";
+
+// The feed returns type codes; the widget filters on readable labels
+const TYPE_LABELS = { RES: "Residential", CND: "Condominium", RNT: "Rental" };
+
 async function fetchProperties(args) {
   const params = new URLSearchParams();
   if (args.city) params.set("q", args.city);
@@ -25,31 +31,29 @@ async function fetchProperties(args) {
   if (!res.ok) throw new Error(`API error: ${res.status}`);
   const data = await res.json();
 
-  return data.map((p) => ({
-    mlsId: p.mlsId,
-    price: p.listPrice || 0,
-    address: p.address?.full || "Unknown",
-    city: p.address?.city || "",
-    state: p.address?.state || "",
-    zip: p.address?.postalCode || "",
-    bedrooms: p.property?.bedrooms || 0,
-    bathrooms: p.property?.bathsFull || 0,
-    sqft: p.property?.area || 0,
-    type: p.property?.type || "",
-    yearBuilt: p.property?.yearBuilt || null,
-    lotSize: p.property?.lotSize || null,
-    description: p.remarks || "",
-    photo: p.photos?.[0] || null,
-    listingType: p.leaseTerm ? "Lease" : "Sale",
-  }));
+  return data.map((p) => {
+    const code = p.property?.type || "";
+    return {
+      mlsId: p.mlsId,
+      price: p.listPrice || 0,
+      address: p.address?.full || "Unknown",
+      city: p.address?.city || "",
+      state: p.address?.state || "",
+      zip: p.address?.postalCode || "",
+      bedrooms: p.property?.bedrooms || 0,
+      bathrooms: p.property?.bathsFull || 0,
+      sqft: p.property?.area || 0,
+      type: TYPE_LABELS[code] || code,
+      yearBuilt: p.property?.yearBuilt || null,
+      lotSize: p.property?.lotSize || null,
+      // Trimmed to what the detail view actually shows - the full remarks are
+      // boilerplate and this payload is sent to the model on every call
+      description: (p.remarks || "").slice(0, 300),
+      photo: p.photos?.[0] || null,
+      listingType: code === "RNT" || p.leaseTerm ? "Rent" : "Sale",
+    };
+  });
 }
-
-let cachedProperties = [];
-
-const replyWithProperties = (message) => ({
-  content: message ? [{ type: "text", text: message }] : [],
-  structuredContent: { properties: cachedProperties },
-});
 
 function createPropertyServer() {
   const server = new McpServer({ name: "property-explorer", version: "0.1.0" });
@@ -57,13 +61,22 @@ function createPropertyServer() {
   server.registerResource(
     "property-widget",
     "ui://widget/property.html",
-    {},
+    { mimeType: "text/html+skybridge" },
     async () => ({
       contents: [{
         uri: "ui://widget/property.html",
         mimeType: "text/html+skybridge",
         text: propertyWidgetHtml,
-        _meta: { "openai/widgetPrefersBorder": true },
+        _meta: {
+          "openai/widgetPrefersBorder": true,
+          "openai/widgetDescription":
+            "Browse property listings as cards with sorting, filtering and a detail view.",
+          // Listing photos are blocked by the widget sandbox unless declared here
+          "openai/widgetCSP": {
+            connect_domains: [],
+            resource_domains: [PHOTO_HOST],
+          },
+        },
       }],
     })
   );
@@ -89,10 +102,17 @@ function createPropertyServer() {
     },
     async (args) => {
       try {
-        cachedProperties = await fetchProperties(args);
-        return replyWithProperties(`Found ${cachedProperties.length} properties.`);
+        const properties = await fetchProperties(args);
+        return {
+          content: [{ type: "text", text: `Found ${properties.length} properties.` }],
+          structuredContent: { properties },
+        };
       } catch (err) {
-        return replyWithProperties(`Error: ${err.message}`);
+        return {
+          content: [{ type: "text", text: `Error: ${err.message}` }],
+          structuredContent: { properties: [] },
+          isError: true,
+        };
       }
     }
   );
