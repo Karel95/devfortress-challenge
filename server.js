@@ -85,7 +85,9 @@ function createPropertyServer() {
     "search_properties",
     {
       title: "Search Properties",
-      description: "Search real estate property listings by location, price range, bedrooms, and type.",
+      description:
+        "Use this when the user asks about real estate listings, homes, condos or rentals - " +
+        "searches property listings by location, price range, bedrooms, and type.",
       inputSchema: {
         city: z.string().optional().describe("City name (e.g., Houston)"),
         minPrice: z.number().optional().describe("Min price USD"),
@@ -93,6 +95,14 @@ function createPropertyServer() {
         minBeds: z.number().optional().describe("Min bedrooms"),
         type: z.enum(["residential", "condominium", "rental"]).optional().describe("Property type"),
         limit: z.number().optional().default(20).describe("Max results"),
+        // Athena injects this when PDFs are attached; unused here, but it must be
+        // declared or the tool call fails schema validation
+        _athenaAttachments: z.array(z.any()).optional(),
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: true,
       },
       _meta: {
         "openai/outputTemplate": "ui://widget/property.html",
